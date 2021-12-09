@@ -313,7 +313,7 @@ CONTAINS
     TYPE( IPE_Plasma ),           INTENT(in)    :: plasma
     TYPE( IPE_MPI_Layer ),        INTENT(in)    :: mpi_layer
     REAL(prec),                   INTENT(in)    :: offset1_deg,offset2_deg
-    INTEGER,                      INTENT(in)    :: potential_model
+    INTEGER,                      INTENT(inout)    :: potential_model
     INTEGER, OPTIONAL,            INTENT(out)   :: rc
     ! Local
     INTEGER :: lp, mp, localrc
@@ -836,7 +836,8 @@ CONTAINS
     IF ( PRESENT( rc ) ) rc = IPE_SUCCESS
 
     IF( dynamo_efield ) THEN
-      mlon90_rad = dtr * mlt
+       mlon90_rad = MLT_to_MagneticLongitude( mlt, 1999, time_tracker % day_of_year, time_tracker % utime, &
+                                             start_index, nlon, rc=localrc )
       mlat90_rad = dtr * colat
     ELSE
       mlon90_rad = MLT_to_MagneticLongitude( mlt, 1999, time_tracker % day_of_year, time_tracker % utime, &
@@ -1180,7 +1181,7 @@ CONTAINS
     TYPE( IPE_Plasma ),           INTENT(in)    :: plasma
     TYPE( IPE_MPI_Layer ),        INTENT(in)    :: mpi_layer
     REAL(prec),                   INTENT(in)    :: offset1_deg,offset2_deg
-    INTEGER,                      INTENT(in)    :: potential_model
+    INTEGER,                      INTENT(inout)    :: potential_model
     INTEGER, OPTIONAL,            INTENT(out)   :: rc
 
     INTEGER, PARAMETER :: dyn_midpoint=48 

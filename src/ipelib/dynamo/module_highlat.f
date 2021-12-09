@@ -22,7 +22,7 @@
 
       implicit none
       real*8,intent(in) :: offset1_deg_r8,offset2_deg_r8
-      integer,intent(in) :: potential_model
+      integer,intent(inout) :: potential_model
       real :: offset1_deg,offset2_deg
       integer,optional,intent(out) :: rc
 
@@ -42,6 +42,8 @@
 !   in dynamics.
 !
       if (present(rc)) rc = IPE_SUCCESS
+
+      potential_model = 0.
 
       if ( potential_model == 1 ) then ! 1 is HEELIS
         call init_heelis
