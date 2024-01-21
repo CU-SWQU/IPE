@@ -154,9 +154,9 @@ CONTAINS
 
     IF( MOD( ipe % time_tracker % elapsed_sec, ipe % parameters % file_output_frequency ) == 0.0_prec )THEN
 
-      CALL ipe % Write( rc=localrc )
+      CALL ipe % Write(rc=localrc )
       IF( localrc /= IPE_SUCCESS ) THEN
-        CALL ESMF_LogSetError(ESMF_RC_FILE_WRITE, msg="Error writing IPE output", &
+        CALL ESMF_LogSetError(ESMF_RC_FILE_WRITE, msg="Error writing to HDF5 file ", &
           line=__LINE__, &
           file=__FILE__, &
           rcToReturn=rc)

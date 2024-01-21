@@ -68,6 +68,9 @@ MODULE IPE_Model_Parameters_Class
     LOGICAL        :: write_apex_eldyn
     REAL(prec)     :: file_output_frequency
     CHARACTER(200) :: file_prefix
+    CHARACTER(200) :: file_prefix2
+    CHARACTER(200) :: file_prefix3
+    CHARACTER(200) :: file_prefix4
     CHARACTER(3)   :: file_extension
 
     !ElDyn
@@ -124,6 +127,10 @@ CONTAINS
     LOGICAL        :: write_apex_eldyn
     REAL(prec)     :: file_output_frequency
     CHARACTER(200) :: file_prefix
+    CHARACTER(200) :: file_prefix2
+    CHARACTER(200) :: file_prefix3
+    CHARACTER(200) :: file_prefix4
+
     CHARACTER(3)   :: file_extension
     REAL(prec)     :: mesh_height_min
     REAL(prec)     :: mesh_height_max
@@ -161,7 +168,7 @@ CONTAINS
     REAL(prec) :: vertical_wind_limit
 
     ! Communication buffers
-    CHARACTER(LEN=200), DIMENSION( 6) :: sbuf
+    CHARACTER(LEN=200), DIMENSION( 9) :: sbuf
     INTEGER,            DIMENSION(24) :: ibuf
     REAL(prec),         DIMENSION(26) :: rbuf
 
@@ -234,6 +241,9 @@ CONTAINS
     write_apex_eldyn          = .TRUE.
     file_output_frequency     = 180.0_prec
     file_prefix               = "output/IPE_State.apex."
+    file_prefix2              = "output/Elydn90km.apex."
+    file_prefix3              = "output/Efield.apex."
+    file_prefix4              = "output/Elydn150km.apex."
     file_extension            = ".h5"
 
     ! IPECAP !
@@ -309,7 +319,8 @@ CONTAINS
 
       ! prepare buffers
       ! -- strings
-      sbuf = (/ grid_file, initial_timestamp, f107_kp_file, mesh_write_file, file_prefix, file_extension /)
+      sbuf = (/ grid_file, initial_timestamp, f107_kp_file, mesh_write_file, file_prefix, file_extension, file_prefix2, &
+                file_prefix3, file_prefix4 /)
       ! -- integers
       ibuf(1:13) = (/ f107_kp_size, f107_kp_interval, f107_kp_skip_size, f107_kp_realtime_interval, &
                       f107_kp_data_size, f107_kp_read_in_start, mesh_fill, mesh_write, &
@@ -348,6 +359,10 @@ CONTAINS
     params % mesh_write_file   = sbuf(4)
     params % file_prefix       = sbuf(5)
     params % file_extension    = sbuf(6)
+    params % file_prefix2      = sbuf(7)
+    params % file_prefix3      = sbuf(8)
+    params % file_prefix4      = sbuf(9)
+
 
 #ifdef HAVE_MPI
     CALL MPI_BCAST( ibuf, size(ibuf), MPI_INTEGER, 0, mpi_layer % mpi_communicator, ierr )

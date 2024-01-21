@@ -464,10 +464,10 @@ CONTAINS
     IMPLICIT NONE
 
     CLASS( IPE_Model ), INTENT(inout) :: ipe
+    CHARACTER(215)     :: filename, filename2, filename3, filename4
     INTEGER, OPTIONAL,  INTENT(out)   :: rc
 
     ! Local
-    CHARACTER(215)  :: filename
     INTEGER, PARAMETER :: num_groups = 1
     CHARACTER(LEN=*), DIMENSION(num_groups),   PARAMETER :: groups = (/ "apex" /)
 
@@ -516,6 +516,53 @@ CONTAINS
         "/apex/neutral_geographic_velocity3"  &
       /)
 
+    INTEGER, PARAMETER :: num_conductivities = 8
+    CHARACTER(LEN=*), DIMENSION(num_conductivities), PARAMETER :: conductivities = &
+      (/ &
+        "/apex/integral513", &
+        "/apex/integral514", &
+        "/apex/integral517", &
+        "/apex/integral518", &
+        "/apex/integral519", &
+        "/apex/integral520", &
+        "/apex/integral1",   &
+        "/apex/integral2"    &
+      /)
+
+    INTEGER, PARAMETER :: num_conductivities_save = 8
+    CHARACTER(LEN=*), DIMENSION(num_conductivities_save), PARAMETER :: conductivities_save = &
+      (/ &
+        "/apex/integral513", &
+        "/apex/integral514", &
+        "/apex/integral517", &
+        "/apex/integral518", &
+        "/apex/integral519", &
+        "/apex/integral520", &
+        "/apex/integral1",   &
+        "/apex/integral2"    &
+      /)
+
+
+     
+    INTEGER, PARAMETER :: num_elef = 2
+    CHARACTER(LEN=*), DIMENSION(num_elef), PARAMETER :: electric_field = &
+      (/ &
+        "/apex/Ed1", &
+        "/apex/Ed2" &
+      /)
+
+    INTEGER, PARAMETER :: num_collision = 6
+    CHARACTER(LEN=*), DIMENSION(num_collision), PARAMETER :: collision = &
+      (/ &
+        "/apex/rnu_op", &
+        "/apex/rnu_o2p", &
+        "/apex/rnu_nop", &
+        "/apex/rnu_ne",  &
+        "/apex/sigma_ped", &
+        "/apex/sigma_hall" &
+      /)
+
+
     INTEGER :: item
     CHARACTER(LEN=28) :: dset_name
 
@@ -524,6 +571,18 @@ CONTAINS
     IF ( PRESENT( rc ) ) rc = IPE_FAILURE
 
     filename = TRIM(ipe % parameters % file_prefix) // &
+               ipe % time_tracker % DateStamp ( ) // &
+               ipe % parameters % file_extension
+
+    filename2 = TRIM(ipe % parameters % file_prefix2) // &
+               ipe % time_tracker % DateStamp ( ) // &
+               ipe % parameters % file_extension
+ 
+    filename3 = TRIM(ipe % parameters % file_prefix3) // &
+               ipe % time_tracker % DateStamp ( ) // &
+               ipe % parameters % file_extension
+
+    filename4 = TRIM(ipe % parameters % file_prefix4) // &
                ipe % time_tracker % DateStamp ( ) // &
                ipe % parameters % file_extension
 
@@ -552,6 +611,17 @@ CONTAINS
       IF (ipe % io % err % check(msg="Unable to write dataset "//ion_densities(item), &
         file=__FILE__, line=__LINE__)) RETURN
     END DO
+
+    ! -- collision
+    DO item = 1, num_collision
+      CALL ipe % io % write(collision(item), &
+        ipe % plasma % collision(item,:,:,       &
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+      IF (ipe % io % err % check(msg="Unable to write dataset "//collision(item), &
+        file=__FILE__, line=__LINE__)) RETURN
+    END DO
+
+
     ! -- Ion velocities
     DO item = 1, num_ion_velocities
       CALL ipe % io % write(ion_velocities(item), &
@@ -651,10 +721,131 @@ CONTAINS
       END DO
     END IF
 
+    dset_name = "/apex/geo_exb_ew"
+    CALL ipe % io % write(dset_name, &
+        ipe % eldyn % v_ExB_geographic(1,:,:,&
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+
+    dset_name = "/apex/geo_exb_ns"
+    CALL ipe % io % write(dset_name, &
+        ipe % eldyn % v_ExB_geographic(2,:,:,&
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+
+    dset_name = "/apex/geo_exb_ud"
+    CALL ipe % io % write(dset_name, &
+        ipe % eldyn % v_ExB_geographic(3,:,:,&
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+   
+ 
     ! Close HDF5 file
     CALL ipe % io % close()
     IF (ipe % io % err % check(msg="Unable to close file "//filename, &
       file=__FILE__, line=__LINE__)) RETURN
+
+!=========================================================================================
+    ! Create HDF5 input file
+    CALL ipe % io % open(filename2, "c")
+    IF (ipe % io % err % check(msg="Unable to open file "//filename2, &
+      file=__FILE__, line=__LINE__)) RETURN
+
+    ! Conductivities domain
+    CALL ipe % io % domain( (/ 2, ipe % grid % NLP, ipe % grid % NMP /), &
+      (/ 1, 1, ipe % mpi_layer % mp_low /), &
+      (/ 2, ipe % grid % NLP, ipe % mpi_layer % mp_high - ipe % mpi_layer % mp_low + 1 /) )
+    IF (ipe % io % err % check(msg="Failed to setup I/O data decomposition", &
+      file=__FILE__, line=__LINE__)) RETURN
+
+    DO item = 1, num_conductivities
+      CALL ipe % io % write(conductivities(item), &
+        ipe % plasma % conductivities(item,:,:, &
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+      IF (ipe % io % err % check(msg="Unable to write dataset "//conductivities(item), &
+        file=__FILE__, line=__LINE__)) RETURN
+    END DO
+
+    ! Close HDF5 file
+    CALL ipe % io % close()
+    IF (ipe % io % err % check(msg="Unable to close file "//filename2, &
+      file=__FILE__, line=__LINE__)) RETURN
+
+!=========================================================================================
+
+    ! Create HDF5 input file
+    CALL ipe % io % open(filename3, "c")
+    IF (ipe % io % err % check(msg="Unable to open file "//filename3, &
+      file=__FILE__, line=__LINE__)) RETURN
+
+
+    ! Electric field domain
+    CALL ipe % io % domain( (/ ipe % grid % NLP, ipe % grid % NMP /), &
+      (/ 1, ipe % mpi_layer % mp_low /), &
+      (/ ipe % grid % NLP, ipe % mpi_layer % mp_high - ipe % mpi_layer % mp_low + 1 /) )
+    IF (ipe % io % err % check(msg="Failed to setup I/O data decomposition", &
+      file=__FILE__, line=__LINE__)) RETURN
+
+    DO item = 1, num_elef
+
+       CALL ipe % io % write(electric_field(item), &
+         ipe % eldyn % electric_field(item,:, &
+         ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+
+      IF (ipe % io % err % check(msg="Unable to write dataset "//electric_field(item), &
+        file=__FILE__, line=__LINE__)) RETURN
+    END DO
+
+
+    dset_name = "/apex/electric_potential"
+    CALL ipe % io % write(dset_name, &
+        phim(:, &
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+
+
+    dset_name = "/apex/apex_exb_ew"
+    CALL ipe % io % write(dset_name, &
+        ipe % eldyn % v_ExB_apex(1, :,&
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+    
+    dset_name = "/apex/apex_exb_ns"
+    CALL ipe % io % write(dset_name, &
+        ipe % eldyn % v_ExB_apex(2, :,&
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+
+
+   ! Close HDF5 file
+   CALL ipe % io % close()
+   IF (ipe % io % err % check(msg="Unable to close file "//filename3, &
+     file=__FILE__, line=__LINE__)) RETURN
+
+
+! ==================
+
+
+    CALL ipe % io % open(filename4, "c")
+    IF (ipe % io % err % check(msg="Unable to open file "//filename4, &
+      file=__FILE__, line=__LINE__)) RETURN
+
+    ! Conductivities domain
+    CALL ipe % io % domain( (/ 2, ipe % grid % NLP, ipe % grid % NMP /), &
+      (/ 1, 1, ipe % mpi_layer % mp_low /), &
+      (/ 2, ipe % grid % NLP, ipe % mpi_layer % mp_high - ipe % mpi_layer % mp_low + 1 /) )
+    IF (ipe % io % err % check(msg="Failed to setup I/O data decomposition", &
+      file=__FILE__, line=__LINE__)) RETURN
+
+    DO item = 1, num_conductivities_save
+      CALL ipe % io % write(conductivities_save(item), &
+        ipe % plasma % conductivities_save(item,:,:, &
+        ipe % mpi_layer % mp_low:ipe % mpi_layer % mp_high))
+      IF (ipe % io % err % check(msg="Unable to write dataset "//conductivities_save(item), &
+        file=__FILE__, line=__LINE__)) RETURN
+    END DO
+
+    ! Close HDF5 file
+    CALL ipe % io % close()
+    IF (ipe % io % err % check(msg="Unable to close file "//filename4, &
+      file=__FILE__, line=__LINE__)) RETURN
+
+
+
 
     IF ( PRESENT( rc ) ) rc = IPE_SUCCESS
 

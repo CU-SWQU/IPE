@@ -37,6 +37,8 @@ MODULE IPE_Plasma_Class
 
     REAL(prec), ALLOCATABLE :: ionization_rates(:,:,:,:)
     REAL(prec), ALLOCATABLE :: conductivities(:,:,:,:)
+    REAL(prec), ALLOCATABLE :: conductivities_save(:,:,:,:)
+    REAL(prec), ALLOCATABLE :: collision(:,:,:,:)
 
 
     CONTAINS
@@ -159,7 +161,9 @@ CONTAINS
                 plasma % electron_density_old(1:nFluxTube,1:NLP,mp_low-halo:mp_high+halo), &
                 plasma % electron_velocity_old(1:3,1:nFluxTube,1:NLP,mp_low-halo:mp_high+halo), &
                 plasma % electron_temperature_old(1:nFluxTube,1:NLP,mp_low-halo:mp_high+halo), &
-                plasma % conductivities(1:6,1:2,1:NLP,1:NMP), &
+                plasma % conductivities(1:8,1:2,1:NLP,1:NMP), &
+                plasma % conductivities_save(1:8,1:2,1:NLP,1:NMP), &
+                plasma % collision(1:6,1:nFluxTube,1:NLP,mp_low-halo:mp_high+halo), &
                 plasma % ionization_rates(1:4,1:nFluxTube,1:NLP,mp_low-halo:mp_high+halo), &
                 stat = stat )
       IF ( ipe_alloc_check( stat, msg="Failed to allocate plasma internal arrays", &
@@ -173,6 +177,7 @@ CONTAINS
       plasma % electron_temperature    = safe_temperature_minimum
       plasma % ionization_rates        = 0.0_prec
       plasma % conductivities          = 0.0_prec
+      plasma % conductivities_save     = 0.0_prec
 
 #ifdef HAVE_MPI
       ALLOCATE( ion_requestHandle(1:16), ion_requestStats(MPI_STATUS_SIZE,1:16) )
@@ -207,6 +212,7 @@ CONTAINS
                 plasma % electron_temperature_old, &
                 plasma % ionization_rates, &
                 plasma % conductivities, &
+                plasma % conductivities_save, &
                 stat = stat )
     IF ( ipe_dealloc_check( stat, msg="Unable to free up memory", &
       line=__LINE__, file=__FILE__, rc=rc ) ) RETURN
@@ -1628,19 +1634,45 @@ CONTAINS
     REAL(prec) :: ds, apex_d1d1, apex_d2d2, apex_d1d2, apex_D, apex_BMAG
     REAL(prec) :: effective_temp, o_cm3, o2_cm3, n2_cm3,abs_ds
     REAL(prec) :: ion_neutral_collisionfrequency, ion_mass_amu, rnu_o2p, rnu_op, rnu_nop, rnu_ne
-    REAL(prec) ::  integral513
-    REAL(prec) ::  integral514
-    REAL(prec) ::  integral517
-    REAL(prec) ::  integral518
-    REAL(prec) ::  integral519
-    REAL(prec) ::  integral520
+    REAL(prec) ::  integral513, integral513_2
+    REAL(prec) ::  integral514, integral514_2
+    REAL(prec) ::  integral517, integral517_2
+    REAL(prec) ::  integral518, integral518_2
+    REAL(prec) ::  integral519, integral519_2
+    REAL(prec) ::  integral520, integral520_2
     REAL(prec) ::  electron_density
     REAL(prec) ::  electron_charge_Coulombs
     REAL(prec) ::  sigma_ped,sigma_hall
+
+!202207
+    INTEGER    ::  j
+    REAL(prec) ::  amu
+    REAL(prec) ::  integral1, integral2, integral1_2, integral2_2
+    REAL(prec) ::  n1, n2, n3, m1, m2, m3, nm
+    REAL(prec) ::  e2g, be3, be3b
+    REAL(prec) ::  apex_e21, apex_e22, apex_e23, gravity1, gravity2, gravity3, bstrength, gravity 
+    
+    REAL(prec) ::  pi
+    REAL(prec) ::  mlat(1, 1:170), alt
+
+!202208    
+    REAL(prec) :: elm, sinIm, sigma_bp, sigma_c0
+
+
+
 #ifdef HAVE_MPI
     INTEGER :: mpierror, sendcount
-    REAL(prec) :: conductivities(1:6,1:2,1:grid % NLP, grid % mp_low:grid % mp_high)
+    REAL(prec) :: conductivities(1:8,1:2,1:grid % NLP, grid % mp_low:grid % mp_high)
 #endif
+
+
+   pi = 3.14159265358
+
+   DO j = 1, 170
+
+       mlat(1,j) = 90 - grid % magnetic_colatitude(1, j) * 180/pi
+
+   ENDDO
 
 ! Need to pick up only latitudes match dynamo grid for the calculation!
 
@@ -1665,6 +1697,21 @@ CONTAINS
           integral518=0.0_prec
           integral519=0.0_prec
           integral520=0.0_prec
+
+
+          integral513_2=0.0_prec
+          integral514_2=0.0_prec
+          integral517_2=0.0_prec
+          integral518_2=0.0_prec
+          integral519_2=0.0_prec
+          integral520_2=0.0_prec
+
+          
+          integral1  =0.0_prec
+          integral2  =0.0_prec
+          
+          integral1_2=0.0_prec
+          integral2_2=0.0_prec
 
           DO i = istart, istop, istep
 
@@ -1746,6 +1793,14 @@ CONTAINS
     &          (plasma % ion_densities(5,i,lp,mp)*rnu_nop /(1.+rnu_nop**2))+ &
     &          (electron_density*rnu_ne  /(1.+rnu_ne**2)))
 
+
+
+!        sigma_ped = qe_fac* &
+!    &         ((plasma % ion_densities(1,i,lp,mp)*rnu_op  /(1.+rnu_op **2))+ &
+!    &          (plasma % ion_densities(6,i,lp,mp) *rnu_o2P/(1.+rnu_o2p**2))+ &
+!    &          (electron_density*rnu_ne  /(1.+rnu_ne**2)))
+
+
 !! Hall conductivity
         sigma_hall = qe_fac* &
     &          (electron_density /(1.+rnu_ne **2)- &
@@ -1753,8 +1808,53 @@ CONTAINS
     &           plasma % ion_densities(6,i,lp,mp)/(1.+rnu_o2p**2)- &
     &           plasma % ion_densities(5,i,lp,mp)/(1.+rnu_nop**2))
 
+
+        plasma % collision(1,i,lp,mp) = rnu_op
+        plasma % collision(2,i,lp,mp) = rnu_o2p
+        plasma % collision(3,i,lp,mp) = rnu_nop
+        plasma % collision(4,i,lp,mp) = rnu_ne
+        plasma % collision(5,i,lp,mp) = sigma_ped
+        plasma % collision(6,i,lp,mp) = sigma_hall
+
+
+
+!! Hall conductivity
+!        sigma_hall = qe_fac* &
+!    &          (electron_density /(1.+rnu_ne **2)- &
+!    &           plasma % ion_densities(6,i,lp,mp)/(1.+rnu_o2p**2)- &
+!    &           plasma % ion_densities(1,i,lp,mp)/(1.+rnu_op **2))
+
 ! get integrals
                 abs_ds = ABS(ds)
+
+
+
+!! ion mass (mi in the equation)
+
+
+                amu = 1.66E-27  ! kg
+    
+                apex_e23 = grid % apex_e_vectors(3,2,i,lp,mp)
+
+                gravity = grid % grx(i,lp,mp) ! m/s^2
+             
+                n1 = plasma % ion_densities(1,i,lp,mp) * 1e-6  ! #/cm^3
+                n2 = plasma % ion_densities(5,i,lp,mp) * 1e-6
+                n3 = plasma % ion_densities(6,i,lp,mp) * 1e-6
+                
+                m1 = n1 * amu * 16
+                m2 = n2 * amu * 32
+                m3 = n3 * amu * 30
+
+                nm = n1*m1 + n2*m2 + n3*m3
+                                 
+                e2g = apex_e23 * gravity
+                be3 = grid % apex_be3(lp,mp) 
+                 
+                bstrength = grid % magnetic_field_strength(i,lp,mp)
+                bstrength = bstrength  ! Tesla
+
+                be3b = be3*bstrength
 
 !g  The following integrals all come from page 203 and 204 of the paper.  They are numbered
 !g  to match the equations in the paper...
@@ -1762,7 +1862,7 @@ CONTAINS
 !g  Note, however, we ignore the |sin I_m| factor wherever it appears since this is applied
 !g  later on within the Dynamo solver...
 !g
-
+               
                integral513 = integral513 + sigma_ped*apex_d1d1*abs_ds/apex_D
 
                integral514 = integral514 + sigma_ped*apex_d2d2*abs_ds/apex_D
@@ -1772,12 +1872,41 @@ CONTAINS
                integral518 = integral518 + sigma_ped*apex_d1d2*abs_ds/apex_D
 
                integral519 = integral519 +(sigma_ped*apex_d1d1*Ue(2)/apex_D &
-     &               + (sigma_hall-sigma_ped*apex_d1d2/apex_D)*Ue(1))*abs_ds
+     &                   + (sigma_hall-sigma_ped*apex_d1d2/apex_D)*Ue(1))*abs_ds
 
                integral520 = integral520 + ((sigma_hall+sigma_ped*apex_d1d2 &
-     &               /apex_D )*Ue(2)- sigma_ped*apex_d2d2*Ue(1)/apex_D)*abs_ds
+     &                   /apex_D )*Ue(2)- sigma_ped*apex_d2d2*Ue(1)/apex_D)*abs_ds
 
-! inputs to the dynamo solver
+
+               integral1 = integral1 + (sigma_ped*apex_d1d1*Ue(2)/apex_D &
+     &                 + (sigma_hall-sigma_ped*apex_d1d2/apex_D)*Ue(1) &
+     &                 + nm*e2g/be3b)*abs_ds
+
+               integral2 = integral2 + (nm*e2g)/bstrength*abs_ds
+
+
+               alt = grid % altitude(i,lp)/1000
+
+               IF (alt >= 150) THEN
+
+                   integral513_2 = integral513_2 + sigma_ped*apex_d1d1*abs_ds/apex_D
+                   integral514_2 = integral514_2 + sigma_ped*apex_d2d2*abs_ds/apex_D
+                   integral517_2 = integral517_2 + sigma_hall*abs_ds
+                   integral518_2 = integral518_2 + sigma_ped*apex_d1d2*abs_ds/apex_D
+                   integral519_2 = integral519_2 +(sigma_ped*apex_d1d1*Ue(2)/apex_D &
+     &                   + (sigma_hall-sigma_ped*apex_d1d2/apex_D)*Ue(1))*abs_ds
+
+                   integral520_2 = integral520_2 + ((sigma_hall+sigma_ped*apex_d1d2 &
+     &                   /apex_D )*Ue(2)- sigma_ped*apex_d2d2*Ue(1)/apex_D)*abs_ds
+
+
+                   integral1_2 = integral1_2 + (sigma_ped*apex_d1d1*Ue(2)/apex_D &
+     &                 + (sigma_hall-sigma_ped*apex_d1d2/apex_D)*Ue(1) &
+     &                 + nm*e2g/be3b)*abs_ds
+
+                   integral2_2 = integral2_2 + (nm*e2g)/bstrength*abs_ds
+                                                    
+               ENDIF
 !               IF ( sw_3DJ==1 ) THEN
 ! calculation of Je1 and Je2, will be useful later
 !eq (5.7)
@@ -1800,25 +1929,28 @@ CONTAINS
 !g
           !sigma_phph_dsi(ihem,mp,lp) = integral513   !(5.13) divided by |sin I_m |
           plasma % conductivities(1,ihem,lp,mp) = integral513
-
+          plasma % conductivities_save(1,ihem,lp,mp) = integral513_2
 
           !sigma_lmlm_msi(ihem,mp,lp) = integral514   !(5.14) multiplied by | sin I_m |
           plasma % conductivities(2,ihem,lp,mp) = integral514
-!g
+          plasma % conductivities_save(2,ihem,lp,mp) = integral514_2
 !g  Integrals 5.17 and 5.18.....
 !g
           !sigma_h(ihem,mp,lp) = integral517       !(5.17)
           plasma % conductivities(3,ihem,lp,mp) = integral517
+          plasma % conductivities_save(3,ihem,lp,mp) = integral517_2
 
 
           !sigma_c(ihem,mp,lp) = integral518       !(5.18)
           plasma % conductivities(4,ihem,lp,mp) = integral518
+          plasma % conductivities_save(4,ihem,lp,mp) = integral518_2
 !g
 !g  integral 5.19 is multiplied by BE3.  However we have not multiplied by |sinI_m| because
 !g  this is done within the dynamo module itself (I've said this enough yeh ?)
 !g
 !          Kdmph_dsi(ihem,mp,lp) =  Apex_BE3*integral519  !(5.19) divided by |sin I_m |
           plasma % conductivities(5,ihem,lp,mp) = grid % apex_be3(lp,mp)*integral519
+          plasma % conductivities_save(5,ihem,lp,mp) = grid % apex_be3(lp,mp)*integral519_2
 
 !g
 !g  The following is equation 5.20.  The integral is multiplied by BE3.  There is also a minus
@@ -1829,10 +1961,22 @@ CONTAINS
           if(ihem == 2) then
             !Kdmlm(ihem,mp,lp) = Apex_BE3*integral520  !(5.20) plus for southern hemi
             plasma % conductivities(6,ihem,lp,mp) = grid % apex_be3(lp,mp)*integral520
+            plasma % conductivities_save(6,ihem,lp,mp) = grid % apex_be3(lp,mp)*integral520_2
           else if(ihem == 1) then
             !Kdmlm(ihem,mp,lp) = -Apex_BE3*integral520  !(5.20) minus for northern hemi
             plasma % conductivities(6,ihem,lp,mp) = -grid % apex_be3(lp,mp)*integral520
+            plasma % conductivities_save(6,ihem,lp,mp) = -grid % apex_be3(lp,mp)*integral520_2
           end if
+
+          !   The KDF and KGF
+            
+            plasma % conductivities(7,ihem,lp,mp) = cos(mlat(1,lp) * pi/180) * grid % apex_be3(lp,mp)*integral1
+            plasma % conductivities_save(7,ihem,lp,mp) = cos(mlat(1,lp) * pi/180) * grid % apex_be3(lp,mp)*integral1_2
+            
+            plasma % conductivities(8,ihem,lp,mp) = cos(mlat(1,lp) * pi/180) * integral2
+            plasma % conductivities_save(8,ihem,lp,mp) = cos(mlat(1,lp) * pi/180) * integral2_2
+
+
 
           ENDDO
         ENDDO
@@ -1844,14 +1988,14 @@ CONTAINS
    DO mp = grid % mp_low , grid % mp_high
      DO lp = 1, grid % NLP
         DO ihem = 1, 2 
-           conductivities(1:6,ihem,lp,mp) = plasma % conductivities(1:6,ihem,lp,mp)
+           conductivities(1:8,ihem,lp,mp) = plasma % conductivities(1:8,ihem,lp,mp)
         ENDDO
      ENDDO
    ENDDO
 
    ! This AllGather requires that NMP is evenly divisible by the number of MPI ranks
-   sendcount = 6*2*grid % NLP*( grid % mp_high-grid % mp_low + 1 )
-   CALL MPI_Allgather( conductivities(1:6,1:2,1:grid % NLP,grid % mp_low:grid % mp_high), &
+   sendcount = 8*2*grid % NLP*( grid % mp_high-grid % mp_low + 1 )
+   CALL MPI_Allgather( conductivities(1:8,1:2,1:grid % NLP,grid % mp_low:grid % mp_high), &
                        sendcount,&
                        mpi_layer % mpi_prec,&
                        plasma % conductivities, &
