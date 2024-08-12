@@ -1842,9 +1842,9 @@ CONTAINS
                 n2 = plasma % ion_densities(5,i,lp,mp) * 1e-6
                 n3 = plasma % ion_densities(6,i,lp,mp) * 1e-6
                 
-                m1 = amu * 16
-                m2 = amu * 32
-                m3 = amu * 30
+                m1 = amu * 16.0
+                m2 = amu * 32.0
+                m3 = amu * 30.0
 
                 nm = n1*m1 + n2*m2 + n3*m3
                                  
