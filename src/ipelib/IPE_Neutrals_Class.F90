@@ -7,9 +7,8 @@ MODULE IPE_Neutrals_Class
   USE IPE_Forcing_Class
   USE ipe_error_module
 
-  ! MSIS
-  USE physics_msis ! gtd7
-  USE utils_constants, ONLY : msis_dp => dp
+  ! empirical neutral atmosphere model
+  USE IPE_Exotherm, ONLY : exo_dp => dp, exotherm_IPE_output
 
   IMPLICIT NONE
 
@@ -322,12 +321,9 @@ CONTAINS
     REAL(4)               :: hwm_sec, hwm_f107d, hwm_f107a, hwm_alt, hwm_lat, hwm_lon
     REAL(4), DIMENSION(2) :: hwm_ap, w
 
-    REAL(msis_dp)               :: msis_alt, msis_f107d, msis_f107a, msis_lat, msis_lon, msis_sec, msis_stl
-    REAL(msis_dp), DIMENSION(7) :: msis_ap
-    REAL(msis_dp), DIMENSION(2) :: temperatures
-    REAL(msis_dp), DIMENSION(9) :: densities
-
-    INTEGER, PARAMETER    :: msis_mass = 48
+    REAL(exo_dp)               :: msis_alt, msis_f107d, msis_f107a, msis_lat, msis_lon, msis_sec
+    REAL(exo_dp), DIMENSION(2) :: temperatures
+    REAL(exo_dp), DIMENSION(9) :: densities
 
 
     IF ( PRESENT( rc ) ) rc = IPE_SUCCESS
@@ -339,11 +335,8 @@ CONTAINS
     hwm_f107a = REAL(forcing % f107_81day_avg( forcing % current_index ), KIND=4)
     hwm_f107d = REAL(forcing % f107( forcing % current_index ),           KIND=4)
 
-    msis_ap      = REAL(AP,    KIND=msis_dp)
-    msis_f107a   = REAL(forcing % f107_81day_avg( forcing % current_index ), KIND=msis_dp)
-    msis_f107d   = REAL(forcing % f107( forcing % current_index ),           KIND=msis_dp)
-    densities    = 0.0_msis_dp
-    temperatures = 0.0_msis_dp
+    densities    = 0.0_exo_dp
+    temperatures = 0.0_exo_dp
 
     iyd = 99000 + time % day_of_year    ! Input, year and day as yyddd
 
@@ -385,24 +378,18 @@ CONTAINS
           ENDIF
 
           ! -- composition & temperature
-          msis_sec     = REAL(time % utime, KIND=msis_dp)
+          msis_sec     = REAL(time % utime, KIND=exo_dp)
           msis_alt     = geo_alt
           msis_lat     = geo_lat
           msis_lon     = geo_lon
-          msis_stl     = REAL(time % utime / 3600.0_prec + geo_lon / 15.0_prec, KIND=msis_dp)
-          densities    = 0.0_msis_dp
-          temperatures = 0.0_msis_dp
+          densities    = 0.0_exo_dp
+          temperatures = 0.0_exo_dp
 
-          call gtd7( iyd,         &    ! Input, year and day as yyddd
+          call exotherm_IPE_output( iyd,         &    ! Input, year and day as yyddd
                      msis_sec,    &    ! Input, universal time ( sec )
                      msis_alt,    &    ! Input, altitude ( km )
                      msis_lat,    &    ! Input, geodetic latitude ( degrees )
                      msis_lon,    &    ! Input, geodetic longitude ( degrees )
-                     msis_stl,    &    ! Input, local apparent solar time ( hrs )
-                     msis_f107a,  &    ! Input, 3 month average of f10.7 flux
-                     msis_f107d,  &    ! Input, daily average of f10.7 flux for the previous day
-                     msis_ap,     &    ! Input, magnetic index ( daily ), current, 3,6,9hrs prior 3hr ap index, 12-33 hr prior ap average, 36-57 hr prior ap average
-                     msis_mass,   &    ! Mass number ( see src/msis/physics_msis.f90 for more details )
                      densities,   &    ! Ouput, neutral densities in cm-3
                      temperatures )    ! Output, exospheric temperature and temperature at altitude
 
